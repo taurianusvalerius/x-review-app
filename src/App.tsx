@@ -37,6 +37,10 @@ type StoredComment = {
 
 const STORAGE_KEY = 'x-review-app-comments-v1'
 
+function toEmbedUrl(url: string) {
+  return `https://twitframe.com/show?url=${encodeURIComponent(url)}`
+}
+
 function App() {
   const [dataset, setDataset] = useState<Dataset | null>(null)
   const [comments, setComments] = useState<Record<string, StoredComment>>({})
@@ -201,72 +205,78 @@ function App() {
         </div>
       </section>
 
-      <section className="card item-card">
-        <div className="meta-grid">
-          <div>
-            <span className="meta-label">Sent at</span>
-            <div>{new Date(currentItem.createdAt).toLocaleString()}</div>
-          </div>
-          <div>
-            <span className="meta-label">Link</span>
+      <section className="split-layout">
+        <div className="card left-pane">
+          <div className="meta-grid stacked-gap">
             <div>
-              <a href={currentItem.statusUrl} rel="noreferrer" target="_blank">
-                open post
-              </a>
+              <span className="meta-label">Sent at</span>
+              <div>{new Date(currentItem.createdAt).toLocaleString()}</div>
+            </div>
+            <div>
+              <span className="meta-label">Open on X</span>
+              <div>
+                <a href={currentItem.statusUrl} rel="noreferrer" target="_blank">
+                  open sent post
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {currentItem.target && (
+            <div className="embed-section">
+              <div className="content-label">Tweet in question</div>
+              <div className="iframe-shell">
+                <iframe
+                  key={`target-${currentItem.id}`}
+                  src={toEmbedUrl(currentItem.target.url ?? `https://x.com/i/web/status/${currentItem.target.tweetId ?? ''}`)}
+                  title={`Target tweet ${currentItem.target.tweetId ?? currentItem.id}`}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="embed-section">
+            <div className="content-label">Your {currentItem.type}</div>
+            <div className="iframe-shell">
+              <iframe
+                key={`sent-${currentItem.id}`}
+                src={toEmbedUrl(currentItem.statusUrl)}
+                title={`Sent tweet ${currentItem.id}`}
+              />
             </div>
           </div>
         </div>
 
-        {currentItem.target && (
-          <div className="target-card">
-            <div className="target-header">Replying to</div>
-            <div className="target-handle">
-              {currentItem.target.authorHandle ? `@${currentItem.target.authorHandle}` : currentItem.target.label ?? 'unknown'}
+        <div className="card right-pane">
+          <div className="review-summary">
+            <div>
+              <span className="meta-label">Review target</span>
+              <div>{currentItem.type === 'reply' ? 'Reply' : 'Tweet'}</div>
             </div>
-            {currentItem.target.text ? (
-              <blockquote>{currentItem.target.text}</blockquote>
-            ) : (
-              <p className="subtle">Target tweet text unavailable, but the source link is included below.</p>
-            )}
-            {currentItem.target.url && (
-              <a href={currentItem.target.url} rel="noreferrer" target="_blank">
-                open original tweet
-              </a>
-            )}
+            <div>
+              <span className="meta-label">Author</span>
+              <div>@{currentItem.authorHandle}</div>
+            </div>
           </div>
-        )}
 
-        <div className="content-block">
-          <div className="content-label">Sent text</div>
-          <p>{currentItem.text}</p>
-        </div>
-
-        {currentItem.quotedText && (
-          <div className="quoted-block">
-            <div className="content-label">Quoted text</div>
-            <p>{currentItem.quotedText}</p>
+          <label className="content-label" htmlFor="comment-box">
+            Comment
+          </label>
+          <textarea
+            id="comment-box"
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="What was good or bad here?"
+            rows={14}
+            value={draft}
+          />
+          <div className="form-actions">
+            <button className="secondary-button" onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))} type="button">
+              Previous
+            </button>
+            <button className="primary-button" onClick={handleSubmit} type="button">
+              Save and next
+            </button>
           </div>
-        )}
-      </section>
-
-      <section className="card form-card">
-        <label className="content-label" htmlFor="comment-box">
-          Comment
-        </label>
-        <textarea
-          id="comment-box"
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="What was good or bad here?"
-          rows={8}
-          value={draft}
-        />
-        <div className="form-actions">
-          <button className="secondary-button" onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))} type="button">
-            Previous
-          </button>
-          <button className="primary-button" onClick={handleSubmit} type="button">
-            Save and next
-          </button>
         </div>
       </section>
     </main>
