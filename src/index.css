@@ -35,7 +35,7 @@ textarea {
 }
 
 .shell {
-  max-width: 1400px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 24px 20px 40px;
 }
@@ -80,7 +80,9 @@ h1 {
 .progress-row,
 .meta-grid,
 .form-actions,
-.review-summary {
+.review-summary,
+.tweet-header,
+.tweet-actions {
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -127,12 +129,9 @@ h1 {
   flex-direction: column;
 }
 
-.stacked-gap {
-  margin-bottom: 4px;
-}
-
 .meta-label,
-.content-label {
+.content-label,
+.quoted-label {
   display: block;
   margin-bottom: 6px;
   font-size: 0.85rem;
@@ -141,33 +140,75 @@ h1 {
   letter-spacing: 0.06em;
 }
 
-.embed-section {
+.thread-column {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  flex: 1;
-  min-height: 0;
+  gap: 12px;
+  overflow: auto;
+  padding-right: 4px;
 }
 
-.iframe-shell {
+.tweet-card {
+  background: #ffffff;
+  color: #111827;
+  border-radius: 18px;
+  padding: 16px;
+  border: 1px solid #dbe2ea;
+}
+
+.tweet-card-highlight {
+  border: 2px solid #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+}
+
+.tweet-author {
+  font-weight: 700;
+}
+
+.tweet-handle,
+.tweet-date {
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.tweet-text {
+  white-space: pre-wrap;
+  margin: 12px 0;
+}
+
+.quoted-box {
+  border: 1px solid #dbe2ea;
   border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #f8fafc;
+}
+
+.quoted-box p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.media-tile {
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: #ffffff;
-  min-height: 420px;
-  flex: 1;
+  border-radius: 14px;
+  background: #e2e8f0;
 }
 
-.iframe-shell iframe {
+.media-tile img,
+.media-tile video {
+  display: block;
   width: 100%;
-  height: 100%;
-  min-height: 420px;
-  border: 0;
-  background: #ffffff;
-}
-
-.review-summary {
-  margin-bottom: 16px;
+  max-height: 420px;
+  object-fit: cover;
+  background: #000;
 }
 
 textarea {
@@ -225,11 +266,6 @@ button:hover {
   .right-pane {
     min-height: auto;
   }
-
-  .iframe-shell,
-  .iframe-shell iframe {
-    min-height: 520px;
-  }
 }
 
 @media (max-width: 720px) {
@@ -241,7 +277,9 @@ button:hover {
   .progress-row,
   .meta-grid,
   .review-summary,
-  .form-actions {
+  .form-actions,
+  .tweet-header,
+  .tweet-actions {
     flex-direction: column;
   }
 

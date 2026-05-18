@@ -78,6 +78,57 @@ def tweet_result_from_entry(entry: dict) -> dict | None:
     return result
 
 
+def extract_media(legacy: dict) -> list[dict]:
+    media = ((legacy.get("extended_entities") or {}).get("media") or [])
+    out: list[dict] = []
+    for item in media:
+        media_type = item.get("type") or "photo"
+        record = {
+            "type": media_type,
+            "url": item.get("media_url_https") or item.get("media_url"),
+            "expandedUrl": item.get("expanded_url"),
+            "displayUrl": item.get("display_url"),
+        }
+        if media_type in {"video", "animated_gif"}:
+            variants = ((item.get("video_info") or {}).get("variants") or [])
+            mp4s = [v for v in variants if v.get("content_type") == "video/mp4" and v.get("url")]
+            mp4s.sort(key=lambda v: v.get("bitrate", 0), reverse=True)
+            if mp4s:
+                record["videoUrl"] = mp4s[0].get("url")
+        out.append(record)
+    return out
+
+
+def extract_user(result: dict) -> tuple[str | None, str | None]:
+    user_info = ((result.get("core") or {}).get("user_results") or {}).get("result") or {}
+    core = user_info.get("core") or {}
+    return core.get("screen_name"), core.get("name")
+
+
+def serialize_tweet(result: dict, fallback_text: str | None = None) -> dict:
+    legacy = result.get("legacy") or {}
+    tweet_id = str(result.get("rest_id") or legacy.get("id_str") or "")
+    author_handle, author_name = extract_user(result)
+    quoted_text = None
+    if result.get("quoted_status_result"):
+        quoted_result = result["quoted_status_result"].get("result") or {}
+        quoted_legacy = quoted_result.get("legacy") or {}
+        quoted_text = clean_text(quoted_legacy.get("full_text") or quoted_legacy.get("text")) or None
+    text = clean_text(legacy.get("full_text") or legacy.get("text") or fallback_text)
+    return {
+        "id": tweet_id,
+        "authorHandle": author_handle,
+        "authorName": author_name,
+        "text": text,
+        "createdAt": parse_created_at(legacy["created_at"]).isoformat() if legacy.get("created_at") else None,
+        "statusUrl": f"https://x.com/{author_handle or 'i'}/status/{tweet_id}" if tweet_id else None,
+        "isQuote": bool(legacy.get("is_quote_status")),
+        "quotedText": quoted_text,
+        "media": extract_media(legacy),
+        "replyToTweetId": legacy.get("in_reply_to_status_id_str"),
+    }
+
+
 def load_ledger_items(threshold: dt.datetime) -> tuple[list[dict], set[str], set[str]]:
     items: list[dict] = []
     posted_ids: set[str] = set()
@@ -117,6 +168,7 @@ def load_ledger_items(threshold: dt.datetime) -> tuple[list[dict], set[str], set
                 "text": text,
                 "isQuote": False,
                 "quotedText": None,
+                "media": [],
                 "target": {
                     "tweetId": target_id or None,
                     "url": row.get("url") or (f"https://x.com/i/web/status/{target_id}" if target_id else None),
@@ -124,7 +176,9 @@ def load_ledger_items(threshold: dt.datetime) -> tuple[list[dict], set[str], set
                     "text": None,
                     "authorHandle": None,
                     "authorName": None,
+                    "media": [],
                 },
+                "thread": [],
             }
         )
 
@@ -232,23 +286,13 @@ def main() -> None:
             if created_at < threshold:
                 continue
 
-            text = clean_text(legacy.get("full_text") or legacy.get("text"))
-            quoted_text = None
-            if result.get("quoted_status_result"):
-                quoted_result = result["quoted_status_result"].get("result") or {}
-                quoted_legacy = quoted_result.get("legacy") or {}
-                quoted_text = clean_text(quoted_legacy.get("full_text") or quoted_legacy.get("text")) or None
-
+            payload = serialize_tweet(result)
             tweets_by_id[tweet_id] = {
-                "id": tweet_id,
+                **payload,
                 "type": "tweet",
-                "createdAt": created_at.isoformat(),
-                "statusUrl": f"https://x.com/{SCREEN_NAME}/status/{tweet_id}",
-                "authorHandle": SCREEN_NAME,
-                "authorName": user_name,
-                "text": text,
-                "isQuote": bool(legacy.get("is_quote_status")),
-                "quotedText": quoted_text,
+                "authorHandle": payload["authorHandle"] or SCREEN_NAME,
+                "authorName": payload["authorName"] or user_name,
+                "thread": [],
                 "target": None,
             }
 
@@ -277,37 +321,39 @@ def main() -> None:
                 f"https://x.com/i/web/status/{target_id}",
             )
             instructions = payload["data"]["threaded_conversation_with_injections_v2"]["instructions"]
-            found = None
+            thread_entries: list[dict] = []
+            focal: dict | None = None
             for entry in get_entries(instructions):
                 result = tweet_result_from_entry(entry)
                 if not result:
                     continue
-                legacy = result.get("legacy") or {}
-                candidate_id = str(result.get("rest_id") or legacy.get("id_str") or "")
-                if candidate_id != target_id:
+                serialized = serialize_tweet(result)
+                if not serialized["id"]:
                     continue
-                user_info = ((result.get("core") or {}).get("user_results") or {}).get("result") or {}
-                found = {
-                    "text": clean_text(legacy.get("full_text") or legacy.get("text")) or None,
-                    "authorHandle": ((user_info.get("core") or {}).get("screen_name")) or None,
-                    "authorName": ((user_info.get("core") or {}).get("name")) or None,
-                }
-                break
-            target_cache[target_id] = found or {}
+                thread_entries.append(serialized)
+                if serialized["id"] == target_id:
+                    focal = serialized
+            target_cache[target_id] = {
+                "focal": focal,
+                "thread": thread_entries,
+            }
         except Exception:
-            target_cache[target_id] = {}
+            target_cache[target_id] = {"focal": None, "thread": []}
 
     for item in ledger_items:
         target = item.get("target")
         if not target or not target.get("tweetId"):
             continue
-        detail = target_cache.get(target["tweetId"], {})
+        cached = target_cache.get(target["tweetId"], {"focal": None, "thread": []})
+        detail = cached.get("focal") or {}
         target["text"] = detail.get("text")
         target["authorHandle"] = detail.get("authorHandle") or target.get("label")
         target["authorName"] = detail.get("authorName")
+        target["media"] = detail.get("media") or []
+        item["thread"] = cached.get("thread") or []
 
     items = ledger_items + list(tweets_by_id.values())
-    items.sort(key=lambda item: item["createdAt"])
+    items.sort(key=lambda item: item["createdAt"] or "")
 
     output = {
         "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
